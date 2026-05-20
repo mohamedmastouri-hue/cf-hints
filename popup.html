@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CF Hints</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        width: 340px;
+        margin: 0;
+        padding: 14px;
+        background: #fff;
+        color: #000;
+        font-family: "Courier New", Courier, monospace;
+        font-size: 13px;
+      }
+
+      .header {
+        position: relative;
+        padding-right: 30px;
+      }
+
+      #title {
+        color: #666;
+        font-size: 11px;
+        font-variant: small-caps;
+        letter-spacing: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      #settingsToggle {
+        position: absolute;
+        top: -5px;
+        right: 0;
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: 0;
+        background: #fff;
+        color: #000;
+        font-family: inherit;
+        font-size: 16px;
+        line-height: 24px;
+        cursor: pointer;
+      }
+
+      .rule {
+        height: 1px;
+        margin: 12px 0 16px;
+        background: #000;
+      }
+
+      #settings {
+        display: none;
+        margin-bottom: 14px;
+      }
+
+      #settings.open {
+        display: block;
+      }
+
+      #apiKey {
+        width: 100%;
+        margin-bottom: 8px;
+        padding: 8px;
+        border: 1px solid #aaa;
+        background: #fff;
+        color: #000;
+        font-family: inherit;
+        font-size: 12px;
+        outline: none;
+      }
+
+      #saveKey {
+        width: 100%;
+        padding: 8px;
+        border: 0;
+        background: #000;
+        color: #fff;
+        font-family: inherit;
+        cursor: pointer;
+      }
+
+      #hintText {
+        min-height: 118px;
+        margin: 0 0 12px;
+        color: #000;
+        line-height: 1.45;
+        white-space: pre-wrap;
+      }
+
+      #counter {
+        margin-bottom: 14px;
+        color: #777;
+        font-size: 11px;
+      }
+
+      #nextHint {
+        width: 100%;
+        padding: 10px;
+        border: 0;
+        background: #000;
+        color: #fff;
+        font-family: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+
+      #nextHint:disabled {
+        background: #ccc;
+        color: #000;
+        cursor: default;
+      }
+
+      #regenerate {
+        display: inline-block;
+        margin-top: 12px;
+        color: #777;
+        font-size: 11px;
+        text-decoration: none;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div id="title">CF Hints</div>
+      <button id="settingsToggle" title="Settings" aria-label="Settings">⚙</button>
+    </div>
+
+    <div class="rule"></div>
+
+    <div id="settings">
+      <input id="apiKey" type="password" placeholder="Mistral API key" autocomplete="off">
+      <button id="saveKey">Save</button>
+    </div>
+
+    <p id="hintText">loading...</p>
+    <div id="counter">Hint 0 / 10</div>
+    <button id="nextHint">Next hint &rarr;</button>
+    <a id="regenerate" href="#">Regenerate</a>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

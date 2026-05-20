@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "CF Hints",
+  "version": "1.0.0",
+  "description": "Socratic hints for Codeforces problems.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": [
+    "https://codeforces.com/*",
+    "https://api.mistral.ai/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://codeforces.com/problemset/problem/*",
+        "https://codeforces.com/contest/*/problem/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "CF Hints"
+  }
+}
