@@ -65,7 +65,9 @@
         display: block;
       }
 
-      #apiKey {
+      #apiKey,
+      #cfApiKey,
+      #cfApiSecret {
         width: 100%;
         margin-bottom: 8px;
         padding: 8px;
@@ -138,6 +140,8 @@
 
     <div id="settings">
       <input id="apiKey" type="password" placeholder="Mistral API key" autocomplete="off">
+      <input id="cfApiKey" type="text" placeholder="Codeforces API key (optional)" autocomplete="off">
+      <input id="cfApiSecret" type="password" placeholder="Codeforces API secret (optional)" autocomplete="off">
       <button id="saveKey">Save</button>
     </div>
 
@@ -147,6 +151,7 @@
     <a id="regenerate" href="#">Regenerate</a>
 
     <script src="cf-api.js"></script>
+    <script src="cf-auth.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

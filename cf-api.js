@@ -100,14 +100,27 @@
     };
   }
 
-  async function fetchContestMeta(contestId, index) {
-    const cacheKey = `cf:contest:${contestId}:v1`;
+  async function contestStandingsUrl(contestId, auth) {
+    // Public mode must use exactly one query param and no auth.
+    if (auth && auth.key && auth.secret && typeof CfAuth !== "undefined") {
+      try {
+        return await CfAuth.signedUrl(API_BASE, "contest.standings", { contestId: String(contestId) }, auth.key, auth.secret);
+      } catch (e) {
+        // Fall through to anonymous below; caller surfaces auth errors separately.
+      }
+    }
+    return `${API_BASE}/contest.standings?contestId=${encodeURIComponent(contestId)}`;
+  }
+
+  async function fetchContestMeta(contestId, index, auth) {
+    const authed = Boolean(auth && auth.key && auth.secret);
+    const cacheKey = authed ? `cf:contest:${contestId}:auth:v1` : `cf:contest:${contestId}:v1`;
     const now = Date.now();
     const cached = await storageGet(cacheKey);
     let entry = cached[cacheKey];
     if (!entry || now - entry.time > CONTEST_TTL_MS || !Array.isArray(entry.problems)) {
-      // Public mode: exactly one query param, no auth params.
-      const res = await fetch(`${API_BASE}/contest.standings?contestId=${encodeURIComponent(contestId)}`);
+      const url = await contestStandingsUrl(contestId, auth);
+      const res = await fetch(url);
       const result = await readApiResponse(res);
       entry = { time: now, problems: result.problems || [] };
       try {
@@ -129,11 +142,11 @@
     };
   }
 
-  async function resolveProblemMeta(url) {
+  async function resolveProblemMeta(url, auth) {
     const ref = parseProblemRef(url);
     if (!ref) throw new Error("Open a Codeforces problem page.");
     if (ref.kind === "problemset") return fetchProblemsetMeta(ref.contestId, ref.index);
-    return fetchContestMeta(ref.contestId, ref.index);
+    return fetchContestMeta(ref.contestId, ref.index, auth);
   }
 
   global.CfApi = {
