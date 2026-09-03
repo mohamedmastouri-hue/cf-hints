@@ -77,8 +77,9 @@ async function init() {
 
   const cacheKey = getCacheKey(currentProblem.url);
   const cached = await storageGet(cacheKey);
-  if (Array.isArray(cached[cacheKey]) && cached[cacheKey].length === 10) {
-    loadHints(cached[cacheKey]);
+  const restored = normalizeCachedHints(cached[cacheKey]);
+  if (restored) {
+    loadHints(restored.hints, restored.index || 0, { persist: false });
     return;
   }
 
@@ -149,54 +150,101 @@ async function generateAndCacheHints(apiKey) {
   try {
     setLoading("generating hints...");
     const generatedHints = await fetchHints(apiKey, currentProblem);
-    await storageSet({ [getCacheKey(currentProblem.url)]: generatedHints });
-    loadHints(generatedHints);
+    await safeStorageSet({ [getCacheKey(currentProblem.url)]: { hints: generatedHints, index: 0, savedAt: Date.now() } });
+    loadHints(generatedHints, 0);
   } catch (error) {
     showError(error.message || "Could not generate hints.");
   }
 }
 
-async function fetchHints(apiKey, problem) {
-  const response = await fetch(API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      temperature: 0.4,
-      max_tokens: 1200,
-      messages: [
-        {
-          role: "system",
-          content: SYSTEM_PROMPT
+async function fetchHints(apiKey, problem, opts) {
+  const attempts = (opts && opts.attempts) || 2;
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
+    try {
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`
         },
-        {
-          role: "user",
-          content: buildPromptProblem(problem)
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: MODEL,
+          temperature: 0.4,
+          max_tokens: 2000,
+          messages: [
+            {
+              role: "system",
+              content: SYSTEM_PROMPT
+            },
+            {
+              role: "user",
+              content: buildPromptProblem(problem)
+            }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        const retryable = response.status === 429 || response.status >= 500;
+        const message = await readApiError(response);
+        lastError = new Error(message);
+        if (retryable && attempt < attempts) {
+          await sleep(1000 * attempt);
+          continue;
         }
-      ]
-    })
-  });
+        throw lastError;
+      }
 
-  if (!response.ok) {
-    const message = await readApiError(response);
-    throw new Error(message);
+      const data = await response.json();
+      const text = extractText(data);
+      const parsed = parseHints(text);
+
+      if (parsed.length !== 10) {
+        throw new Error("API returned an invalid hint list.");
+      }
+
+      return parsed;
+    } catch (error) {
+      if (error && error.name === "AbortError") {
+        lastError = new Error("Request timed out. Check connection and retry.");
+        if (attempt < attempts) {
+          await sleep(1000 * attempt);
+          continue;
+        }
+        throw lastError;
+      }
+      if (attempt >= attempts) throw error;
+      lastError = error;
+      // Network TypeError is retryable; validation errors are not.
+      if (error instanceof TypeError) {
+        await sleep(1000 * attempt);
+        continue;
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
   }
+  throw lastError || new Error("Could not generate hints.");
+}
 
-  const data = await response.json();
-  const text = extractText(data);
-  const parsed = parseHints(text);
-
-  if (parsed.length !== 10) {
-    throw new Error("API returned an invalid hint list.");
-  }
-
-  return parsed;
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function readApiError(response) {
+  const retryAfter = response.headers ? response.headers.get("Retry-After") : null;
+  if (response.status === 429) {
+    return retryAfter
+      ? `Rate limited. Retry in ${retryAfter}s.`
+      : "Rate limited. Wait a minute and retry.";
+  }
+  if (response.status === 401) return "Invalid Mistral API key. Check settings.";
+  if (response.status >= 500) return `Mistral server error ${response.status}. Retrying may help.`;
   try {
     const data = await response.json();
     return data.error?.message || `API error ${response.status}`;
@@ -215,26 +263,15 @@ function extractText(data) {
 }
 
 function parseHints(text) {
-  try {
-    return parseJsonHints(text);
-  } catch (error) {
-    return parseNumberedHints(text);
-  }
-}
-
-function parseJsonHints(text) {
-  const parsed = JSON.parse(cleanJsonText(text));
-  const hintList = Array.isArray(parsed) ? parsed : parsed.hints || parsed.data || parsed.result;
-
-  if (!Array.isArray(hintList) || !hintList.every((hint) => typeof hint === "string")) {
-    throw new Error("API returned invalid JSON.");
-  }
-
-  return hintList.map((hint) => hint.trim()).filter(Boolean);
+  return parseNumberedHints(text);
 }
 
 function parseNumberedHints(text) {
-  const hintsFromLines = text
+  const cleaned = String(text || "")
+    .replace(/^```[\s\S]*?\n/, "")
+    .replace(/```\s*$/, "")
+    .trim();
+  const hintsFromLines = cleaned
     .split(/\n+/)
     .map((line) => line.replace(/^\s*(?:\d+[\).:-]\s*)/, "").trim())
     .filter(Boolean);
@@ -243,7 +280,7 @@ function parseNumberedHints(text) {
     return hintsFromLines;
   }
 
-  const matches = [...text.matchAll(/(?:^|\n)\s*\d+[\).:-]\s*([\s\S]*?)(?=\n\s*\d+[\).:-]\s*|$)/g)];
+  const matches = [...cleaned.matchAll(/(?:^|\n)\s*\d+[\).:-]\s*([\s\S]*?)(?=\n\s*\d+[\).:-]\s*|$)/g)];
   const hintsFromMatches = matches.map((match) => match[1].trim()).filter(Boolean);
 
   if (hintsFromMatches.length === 10) {
@@ -253,32 +290,55 @@ function parseNumberedHints(text) {
   throw new Error("API returned an invalid hint list.");
 }
 
-function cleanJsonText(text) {
-  const trimmed = text.trim();
-  const fencedMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  if (fencedMatch) {
-    return fencedMatch[1].trim();
-  }
-
-  const start = trimmed.indexOf("[");
-  const end = trimmed.lastIndexOf("]");
-  if (start !== -1 && end > start) {
-    return trimmed.slice(start, end + 1);
-  }
-
-  return trimmed;
-}
-
-function loadHints(nextHints) {
+function loadHints(nextHints, startIndex, opts) {
   hints = nextHints;
-  currentHintIndex = 0;
+  currentHintIndex = Math.min(Math.max(startIndex || 0, 0), hints.length - 1);
   renderCurrentHint();
+  if (!opts || opts.persist !== false) persistHintIndex();
 }
 
 function showNextHint() {
   if (currentHintIndex < hints.length - 1) {
     currentHintIndex += 1;
     renderCurrentHint();
+    persistHintIndex();
+  }
+}
+
+function normalizeCachedHints(value) {
+  if (Array.isArray(value) && value.length === 10) return { hints: value, index: 0 };
+  if (value && Array.isArray(value.hints) && value.hints.length === 10) {
+    const index = Math.min(Math.max(value.index || 0, 0), 9);
+    return { hints: value.hints, index };
+  }
+  return null;
+}
+
+function persistHintIndex() {
+  try {
+    if (!currentProblem || !currentProblem.url) return;
+    const key = getCacheKey(currentProblem.url);
+    storageGet(key).then((cached) => {
+      const entry = normalizeCachedHints(cached[key]);
+      if (!entry) return;
+      safeStorageSet({ [key]: { hints: entry.hints, index: currentHintIndex, savedAt: Date.now() } });
+    }).catch(() => {});
+  } catch (e) { /* ignore */ }
+}
+
+async function safeStorageSet(value) {
+  try {
+    await storageSet(value);
+  } catch (e) {
+    // Quota exceeded: drop CF metadata caches (re-fetchable) and retry once.
+    try {
+      const all = await storageGet(null);
+      const removeKeys = Object.keys(all || {}).filter((k) => k.startsWith("cf:contest:") || k === "cf:problemset:v1");
+      if (removeKeys.length) await chrome.storage.local.remove(removeKeys);
+      await storageSet(value);
+    } catch (retryError) {
+      // Last resort: still show hints even if cache write fails.
+    }
   }
 }
 
