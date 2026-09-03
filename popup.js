@@ -50,6 +50,21 @@ async function init() {
 
   titleElement.textContent = currentProblem.title || "Codeforces problem";
 
+  // Enrich with official Codeforces API metadata (name/rating/tags).
+  // Falls back to scraped title when offline or for private contests.
+  try {
+    if (typeof CfApi !== "undefined") {
+      const meta = await CfApi.resolveProblemMeta(currentProblem.url);
+      if (meta && meta.name) {
+        currentProblem.meta = meta;
+        currentProblem.title = meta.name;
+        titleElement.textContent = meta.name;
+      }
+    }
+  } catch (e) {
+    // Keep scraped title; API failure must not block hints.
+  }
+
   const cacheKey = getCacheKey(currentProblem.url);
   const cached = await storageGet(cacheKey);
   if (Array.isArray(cached[cacheKey]) && cached[cacheKey].length === 10) {
@@ -143,7 +158,7 @@ async function fetchHints(apiKey, problem) {
         },
         {
           role: "user",
-          content: `${problem.title}\n\n${problem.statement}`
+          content: buildPromptProblem(problem)
         }
       ]
     })
@@ -279,7 +294,10 @@ function showError(message) {
 }
 
 function getCacheKey(url) {
-  return `hints:${url}`;
+  try {
+    if (typeof CfApi !== "undefined") return `hints:${CfApi.normalizeUrl(url)}`;
+  } catch (e) { /* fall through */ }
+  return `hints:${String(url || "").split("#")[0]}`;
 }
 
 async function getActiveTabUrl() {
@@ -288,8 +306,20 @@ async function getActiveTabUrl() {
 }
 
 function isSupportedProblemUrl(url) {
+  try {
+    if (typeof CfApi !== "undefined") return CfApi.isSupportedProblemUrl(url);
+  } catch (e) { /* fall through */ }
   return /^https:\/\/codeforces\.com\/problemset\/problem\//.test(url) ||
     /^https:\/\/codeforces\.com\/contest\/[^/]+\/problem\//.test(url);
+}
+
+function buildPromptProblem(problem) {
+  const meta = problem.meta || {};
+  const header = [problem.title || ""];
+  if (meta.rating) header.push(`Rating: ${meta.rating}`);
+  if (Array.isArray(meta.tags) && meta.tags.length) header.push(`Tags: ${meta.tags.join(", ")}`);
+  if (meta.contestId && meta.index) header.push(`Problem: ${meta.contestId}${meta.index}`);
+  return `${header.filter(Boolean).join("\n")}\n\n${problem.statement || ""}`;
 }
 
 function storageGet(keys) {
