@@ -103,8 +103,37 @@
         font-size: 11px;
       }
 
+      #meta {
+        margin: -6px 0 12px;
+        color: #777;
+        font-size: 11px;
+        min-height: 14px;
+      }
+
+      .row {
+        display: flex;
+        gap: 8px;
+      }
+
+      #prevHint {
+        width: 110px;
+        padding: 10px 0;
+        border: 1px solid #000;
+        background: #fff;
+        color: #000;
+        font-family: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+
+      #prevHint:disabled {
+        border-color: #ccc;
+        color: #aaa;
+        cursor: default;
+      }
+
       #nextHint {
-        width: 100%;
+        flex: 1;
         padding: 10px;
         border: 0;
         background: #000;
@@ -128,6 +157,16 @@
         text-decoration: none;
         cursor: pointer;
       }
+
+      #copyHint {
+        display: inline-block;
+        margin-top: 12px;
+        margin-left: 12px;
+        color: #777;
+        font-size: 11px;
+        text-decoration: none;
+        cursor: pointer;
+      }
     </style>
   </head>
   <body>
@@ -146,9 +185,14 @@
     </div>
 
     <p id="hintText">loading...</p>
+    <div id="meta"></div>
     <div id="counter">Hint 0 / 10</div>
-    <button id="nextHint">Next hint &rarr;</button>
+    <div class="row">
+      <button id="prevHint" disabled>&larr; Prev</button>
+      <button id="nextHint">Next hint &rarr;</button>
+    </div>
     <a id="regenerate" href="#">Regenerate</a>
+    <a id="copyHint" href="#">Copy</a>
 
     <script src="cf-api.js"></script>
     <script src="cf-auth.js"></script>
