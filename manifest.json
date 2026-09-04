@@ -3,7 +3,7 @@
   "name": "CF Hints",
   "version": "1.0.0",
   "description": "Socratic hints for Codeforces problems.",
-  "permissions": ["storage", "activeTab", "scripting"],
+  "permissions": ["storage"],
   "host_permissions": [
     "https://codeforces.com/*",
     "https://api.mistral.ai/*"
