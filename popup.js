@@ -319,7 +319,9 @@ function buildPromptProblem(problem) {
   if (meta.rating) header.push(`Rating: ${meta.rating}`);
   if (Array.isArray(meta.tags) && meta.tags.length) header.push(`Tags: ${meta.tags.join(", ")}`);
   if (meta.contestId && meta.index) header.push(`Problem: ${meta.contestId}${meta.index}`);
-  return `${header.filter(Boolean).join("\n")}\n\n${problem.statement || ""}`;
+  const raw = typeof problem.statement === "string" ? problem.statement : "";
+  const statement = raw.length > 12000 ? `${raw.slice(0, 12000).trim()}\n…[truncated]` : raw;
+  return `${header.filter(Boolean).join("\n")}\n\n${statement}`;
 }
 
 function storageGet(keys) {
