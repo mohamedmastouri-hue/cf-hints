@@ -12,6 +12,8 @@ const regenerateLink = document.getElementById("regenerate");
 const settingsElement = document.getElementById("settings");
 const settingsToggle = document.getElementById("settingsToggle");
 const apiKeyInput = document.getElementById("apiKey");
+const cfApiKeyInput = document.getElementById("cfApiKey");
+const cfApiSecretInput = document.getElementById("cfApiSecret");
 const saveKeyButton = document.getElementById("saveKey");
 
 let currentProblem = null;
@@ -33,8 +35,9 @@ async function init() {
     return;
   }
 
-  const data = await storageGet(["currentProblem", "title", "statement", "url", "apiKey"]);
+  const data = await storageGet(["currentProblem", "title", "statement", "url", "apiKey", "cfApiKey", "cfApiSecret"]);
   const apiKey = data.apiKey || DEFAULT_API_KEY;
+  const cfAuth = { key: (data.cfApiKey || "").trim(), secret: (data.cfApiSecret || "").trim() };
   currentProblem = data.currentProblem || {
     title: data.title,
     statement: data.statement,
@@ -42,6 +45,8 @@ async function init() {
   };
 
   apiKeyInput.value = apiKey;
+  if (cfApiKeyInput) cfApiKeyInput.value = cfAuth.key;
+  if (cfApiSecretInput) cfApiSecretInput.value = cfAuth.secret;
 
   if (!currentProblem || !currentProblem.statement || !currentProblem.url) {
     showError("Open a Codeforces problem page first.");
@@ -51,10 +56,10 @@ async function init() {
   titleElement.textContent = currentProblem.title || "Codeforces problem";
 
   // Enrich with official Codeforces API metadata (name/rating/tags).
-  // Falls back to scraped title when offline or for private contests.
+  // Falls back to scraped title when offline; private/gym contests need CF key+secret.
   try {
     if (typeof CfApi !== "undefined") {
-      const meta = await CfApi.resolveProblemMeta(currentProblem.url);
+      const meta = await CfApi.resolveProblemMeta(currentProblem.url, cfAuth.key && cfAuth.secret ? cfAuth : null);
       if (meta && meta.name) {
         currentProblem.meta = meta;
         currentProblem.title = meta.name;
@@ -62,7 +67,12 @@ async function init() {
       }
     }
   } catch (e) {
-    // Keep scraped title; API failure must not block hints.
+    const msg = e && e.message ? e.message : "";
+    if (/private|gym|forbidden|unauthorized|apiKey|apiSig/i.test(msg) && !(cfAuth.key && cfAuth.secret)) {
+      // Keep statement flow; surface hint that CF credentials would help.
+      titleElement.textContent = currentProblem.title || "Codeforces problem (private? add CF key)";
+    }
+    // Otherwise keep scraped title; API failure must not block hints.
   }
 
   const cacheKey = getCacheKey(currentProblem.url);
@@ -95,17 +105,23 @@ function openSettings() {
 
 async function saveApiKey() {
   const apiKey = apiKeyInput.value.trim();
-  if (!apiKey) {
+  const cfApiKey = cfApiKeyInput ? cfApiKeyInput.value.trim() : "";
+  const cfApiSecret = cfApiSecretInput ? cfApiSecretInput.value.trim() : "";
+  if ((cfApiKey && !cfApiSecret) || (!cfApiKey && cfApiSecret)) {
+    showError("Enter both CF API key and secret, or leave both empty.");
+    return;
+  }
+  if (!apiKey && !cfApiKey) {
     showError("Enter an API key before saving.");
     return;
   }
 
-  await storageSet({ apiKey });
+  await storageSet({ apiKey, cfApiKey, cfApiSecret });
 
-  if (currentProblem && hints.length === 0) {
+  if (currentProblem && hints.length === 0 && apiKey) {
     await generateAndCacheHints(apiKey);
   } else {
-    hintTextElement.textContent = "API key saved.";
+    hintTextElement.textContent = "Settings saved.";
   }
 }
 
