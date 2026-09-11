@@ -6,9 +6,12 @@ const SYSTEM_PROMPT =
 
 const titleElement = document.getElementById("title");
 const hintTextElement = document.getElementById("hintText");
+const metaElement = document.getElementById("meta");
 const counterElement = document.getElementById("counter");
 const nextButton = document.getElementById("nextHint");
+const prevButton = document.getElementById("prevHint");
 const regenerateLink = document.getElementById("regenerate");
+const copyLink = document.getElementById("copyHint");
 const settingsElement = document.getElementById("settings");
 const settingsToggle = document.getElementById("settingsToggle");
 const apiKeyInput = document.getElementById("apiKey");
@@ -24,7 +27,9 @@ document.addEventListener("DOMContentLoaded", init);
 settingsToggle.addEventListener("click", toggleSettings);
 saveKeyButton.addEventListener("click", saveApiKey);
 nextButton.addEventListener("click", showNextHint);
+if (prevButton) prevButton.addEventListener("click", showPrevHint);
 regenerateLink.addEventListener("click", regenerateHints);
+if (copyLink) copyLink.addEventListener("click", copyCurrentHint);
 
 async function init() {
   setLoading("loading...");
@@ -54,6 +59,7 @@ async function init() {
   }
 
   titleElement.textContent = currentProblem.title || "Codeforces problem";
+  renderMeta();
 
   // Enrich with official Codeforces API metadata (name/rating/tags).
   // Falls back to scraped title when offline; private/gym contests need CF key+secret.
@@ -64,6 +70,7 @@ async function init() {
         currentProblem.meta = meta;
         currentProblem.title = meta.name;
         titleElement.textContent = meta.name;
+        renderMeta();
       }
     }
   } catch (e) {
@@ -293,6 +300,7 @@ function parseNumberedHints(text) {
 function loadHints(nextHints, startIndex, opts) {
   hints = nextHints;
   currentHintIndex = Math.min(Math.max(startIndex || 0, 0), hints.length - 1);
+  renderMeta();
   renderCurrentHint();
   if (!opts || opts.persist !== false) persistHintIndex();
 }
@@ -305,6 +313,39 @@ function showNextHint() {
   }
 }
 
+function showPrevHint() {
+  if (currentHintIndex > 0) {
+    currentHintIndex -= 1;
+    renderCurrentHint();
+    persistHintIndex();
+  }
+}
+
+async function copyCurrentHint(event) {
+  if (event) event.preventDefault();
+  const text = hints[currentHintIndex] || "";
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(`Hint ${currentHintIndex + 1}/10: ${text}`);
+    if (copyLink) {
+      const original = copyLink.textContent;
+      copyLink.textContent = "Copied!";
+      setTimeout(() => { copyLink.textContent = original; }, 1200);
+    }
+  } catch (e) {
+    showError("Copy failed. Select the text manually.");
+  }
+}
+
+function renderMeta() {
+  if (!metaElement) return;
+  const meta = (currentProblem && currentProblem.meta) || {};
+  const parts = [];
+  if (meta.rating) parts.push(`★ ${meta.rating}`);
+  if (meta.contestId && meta.index) parts.push(`${meta.contestId}${meta.index}`);
+  if (Array.isArray(meta.tags) && meta.tags.length) parts.push(meta.tags.slice(0, 4).join(" · "));
+  metaElement.textContent = parts.join("  |  ");
+}
 function normalizeCachedHints(value) {
   if (Array.isArray(value) && value.length === 10) return { hints: value, index: 0 };
   if (value && Array.isArray(value.hints) && value.hints.length === 10) {
@@ -346,6 +387,7 @@ function renderCurrentHint() {
   hintTextElement.textContent = hints[currentHintIndex] || "";
   counterElement.textContent = `Hint ${currentHintIndex + 1} / 10`;
 
+  if (prevButton) prevButton.disabled = currentHintIndex <= 0 || hints.length === 0;
   if (currentHintIndex >= hints.length - 1) {
     nextButton.textContent = "No more hints";
     nextButton.disabled = true;
@@ -358,8 +400,10 @@ function renderCurrentHint() {
 function setLoading(message) {
   hintTextElement.textContent = message;
   counterElement.textContent = "Hint 0 / 10";
+  if (metaElement) metaElement.textContent = "";
   nextButton.textContent = "Next hint →";
   nextButton.disabled = true;
+  if (prevButton) prevButton.disabled = true;
 }
 
 function showError(message) {
@@ -367,6 +411,7 @@ function showError(message) {
   counterElement.textContent = "Hint 0 / 10";
   nextButton.textContent = "Next hint →";
   nextButton.disabled = true;
+  if (prevButton) prevButton.disabled = true;
 }
 
 function getCacheKey(url) {
